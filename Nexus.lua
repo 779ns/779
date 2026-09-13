@@ -1,5 +1,4 @@
 -- StarterPlayer/StarterPlayerScripts/AdminGUI (LocalScript)
--- ⚡ NEXUS v1.0 — Optimized Edition
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

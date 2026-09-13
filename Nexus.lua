@@ -1,27 +1,21 @@
--- StarterPlayer/StarterPlayerScripts/AdminGUI (LocalScript)
+--[[
+    NEXUS v1.0 — Universal Edition
+    Works in any Roblox game via executor
+    Features: FastClick • Kill Aura • Fly • Noclip • ESP
+]]--
 
+-- ═══ SERVICES ═══
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
+local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Stats = game:GetService("Stats")
 
-local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local plr = Players.LocalPlayer
+local cam = workspace.CurrentCamera
+local Mouse = plr:GetMouse()
 
--- ═══════════════════════════════════════════════
--- 📡 REMOTES (кэш)
--- ═══════════════════════════════════════════════
-local clickRemote  = ReplicatedStorage:WaitForChild("FastClick")
-local flyRemote    = ReplicatedStorage:WaitForChild("FlyRemote")
-local auraRemote   = ReplicatedStorage:WaitForChild("AuraRemote")
-local noclipRemote = ReplicatedStorage:WaitForChild("NoclipRemote")
-local espRemote    = ReplicatedStorage:WaitForChild("EspRemote")
-
--- ═══════════════════════════════════════════════
--- 🎨 THEME (кэш цветов)
--- ═══════════════════════════════════════════════
+-- ═══ THEME ═══
 local T = {
 	bg        = Color3.fromRGB(14, 14, 16),
 	panel     = Color3.fromRGB(20, 20, 24),
@@ -38,12 +32,11 @@ local T = {
 	cyan      = Color3.fromRGB(80, 210, 220),
 }
 
--- ═══════════════════════════════════════════════
--- 🧠 STATE
--- ═══════════════════════════════════════════════
+-- ═══ STATE ═══
 local state = {
 	flyEnabled = false, flySpeed = 100,
 	clickCooldown = 0.1, autoClick = false,
+	killAura = false, auraRange = 20, auraDamage = 15, auraCooldown = 0.15,
 	noclip = false,
 	espEnabled = false,
 	esp = {
@@ -61,9 +54,7 @@ local state = {
 	}
 }
 
--- ═══════════════════════════════════════════════
--- 🛠 HELPERS (оптимизированные)
--- ═══════════════════════════════════════════════
+-- ═══ HELPERS ═══
 local TweenInfoFast = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local function new(cls, props, parent)
@@ -93,22 +84,39 @@ local function stroke(inst, col, th, trans)
 	return s
 end
 
--- ═══════════════════════════════════════════════
--- 🪟 GUI ROOT
--- ═══════════════════════════════════════════════
-local old = player.PlayerGui:FindFirstChild("NexusPanel")
+-- Защита GUI от обнаружения (для экзекуторов)
+local function protectGui(g)
+	pcall(function()
+		if gethui then
+			g.Parent = gethui()
+		elseif syn and syn.protect_gui then
+			syn.protect_gui(g)
+			g.Parent = game:GetService("CoreGui")
+		elseif protect_gui then
+			protect_gui(g)
+		else
+			g.Parent = game:GetService("CoreGui")
+		end
+	end)
+end
+
+-- ═══ GUI ROOT ═══
+local old = game:GetService("CoreGui"):FindFirstChild("NexusPanel")
 if old then old:Destroy() end
+pcall(function()
+	local old2 = plr.PlayerGui:FindFirstChild("NexusPanel")
+	if old2 then old2:Destroy() end
+end)
 
 local gui = new("ScreenGui", {
 	Name = "NexusPanel",
 	ResetOnSpawn = false,
 	IgnoreGuiInset = true,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-}, player:WaitForChild("PlayerGui"))
+})
+protectGui(gui)
 
--- ═══════════════════════════════════════════════
--- 📌 WINDOW
--- ═══════════════════════════════════════════════
+-- ═══ WINDOW ═══
 local win = new("Frame", {
 	Name = "Window",
 	Size = UDim2.new(0, 420, 0, 560),
@@ -133,7 +141,6 @@ new("Frame", {
 	BorderSizePixel = 0,
 }, header)
 
--- Логотип NEXUS
 new("TextLabel", {
 	Size = UDim2.new(0, 16, 0, 16),
 	Position = UDim2.new(0, 12, 0.5, -8),
@@ -177,7 +184,6 @@ local headerStats = new("TextLabel", {
 	TextXAlignment = Enum.TextXAlignment.Right,
 }, header)
 
--- Кнопка закрытия
 local closeBtn = new("TextButton", {
 	Size = UDim2.new(0, 40, 1, 0),
 	Position = UDim2.new(1, -40, 0, 0),
@@ -189,21 +195,23 @@ local closeBtn = new("TextButton", {
 	AutoButtonColor = false,
 }, header)
 
--- ═══ DRAG (оптимизированное) ═══
+-- Drag
 local dragging, dragStart, startPos
 header.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		dragging, dragStart, startPos = true, input.Position, win.Position
 	end
 end)
-UserInputService.InputChanged:Connect(function(input)
-	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+UIS.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 		local d = input.Position - dragStart
 		win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
 	end
 end)
-UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+UIS.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = false
+	end
 end)
 
 -- ═══ SIDEBAR ═══
@@ -263,9 +271,7 @@ local memoryText = new("TextLabel", {
 	TextXAlignment = Enum.TextXAlignment.Right,
 }, statusBar)
 
--- ═══════════════════════════════════════════════
--- 🎫 TABS
--- ═══════════════════════════════════════════════
+-- ═══ TABS ═══
 local pages = {}
 local tabs = {}
 local activePage = nil
@@ -318,9 +324,7 @@ local function switchTab(id)
 	end
 end
 
--- ═══════════════════════════════════════════════
--- 📄 PAGES
--- ═══════════════════════════════════════════════
+-- ═══ PAGES ═══
 local function makePage(id)
 	local page = new("ScrollingFrame", {
 		Name = id,
@@ -336,9 +340,7 @@ local function makePage(id)
 	return page
 end
 
--- ═══════════════════════════════════════════════
--- 🧩 COMPONENTS
--- ═══════════════════════════════════════════════
+-- ═══ COMPONENTS ═══
 local cursor = {}
 local function setCur(p) cursor[p] = 12 end
 local function getY(p, h)
@@ -508,18 +510,20 @@ local function slider(page, label, minV, maxV, def, suffix, cb)
 	}, row)
 
 	hit.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			upd(input.Position.X)
 		end
 	end)
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+	UIS.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			upd(input.Position.X)
 		end
 	end)
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+	UIS.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
 	end)
 end
 
@@ -685,63 +689,44 @@ local function colorPicker(page, label, def, cb)
 	end)
 end
 
--- ═══════════════════════════════════════════════
--- 📄 COMBAT
--- ═══════════════════════════════════════════════
+-- ═══ COMBAT ═══
 local p1 = makePage("Combat"); setCur(p1)
 
 sectionTitle(p1, "FAST CLICK")
 local autoClickTgl = toggle(p1, "Автоклик", false, function(v) state.autoClick = v end)
-slider(p1, "Задержка клика", 0.01, 1.0, 0.1, "s", function(v)
-	state.clickCooldown = v
-	clickRemote:FireServer("setCooldown", v)
-end)
+slider(p1, "Задержка клика", 0.01, 1.0, 0.1, "s", function(v) state.clickCooldown = v end)
 
-sectionTitle(p1, "KILL AURA")
-toggle(p1, "Включить Kill Aura", false, function()
-	auraRemote:FireServer("toggle")
-end)
-slider(p1, "Радиус", 5, 100, 20, "", function(v) auraRemote:FireServer("setRange", v) end)
-slider(p1, "Урон", 1, 200, 15, "", function(v) auraRemote:FireServer("setDamage", v) end)
-slider(p1, "Скорость удара", 0.05, 1.0, 0.15, "s", function(v) auraRemote:FireServer("setCooldown", v) end)
+sectionTitle(p1, "KILL AURA (клиентская)")
+toggle(p1, "Включить Kill Aura", false, function(v) state.killAura = v end)
+slider(p1, "Радиус", 5, 100, 20, "", function(v) state.auraRange = v end)
+slider(p1, "Урон (визуал/локально)", 1, 200, 15, "", function(v) state.auraDamage = v end)
+slider(p1, "Скорость удара", 0.05, 1.0, 0.15, "s", function(v) state.auraCooldown = v end)
 p1.CanvasSize = UDim2.new(0, 0, 0, cursor[p1] + 20)
 
--- ═══════════════════════════════════════════════
--- 📄 MOVEMENT
--- ═══════════════════════════════════════════════
+-- ═══ MOVEMENT ═══
 local p2 = makePage("Movement"); setCur(p2)
 
 sectionTitle(p2, "FLIGHT")
 toggle(p2, "Полёт", false, function(v)
 	state.flyEnabled = v
 	if v then
-		local c = player.Character
+		local c = plr.Character
 		if c then setupFly(c) end
-	else stopFly() end
-	flyRemote:FireServer("toggle")
+	else
+		stopFly()
+	end
 end)
-slider(p2, "Скорость полёта", 10, 500, 100, "", function(v)
-	state.flySpeed = v
-	flyRemote:FireServer("setSpeed", v)
-end)
+slider(p2, "Скорость полёта", 10, 500, 100, "", function(v) state.flySpeed = v end)
 
 sectionTitle(p2, "NOCLIP")
-toggle(p2, "Noclip (проход сквозь стены)", false, function(v)
-	state.noclip = v
-	noclipRemote:FireServer("toggle")
-end)
+toggle(p2, "Noclip (проход сквозь стены)", false, function(v) state.noclip = v end)
 p2.CanvasSize = UDim2.new(0, 0, 0, cursor[p2] + 20)
 
--- ═══════════════════════════════════════════════
--- 📄 ESP
--- ═══════════════════════════════════════════════
+-- ═══ ESP ═══
 local p3 = makePage("ESP"); setCur(p3)
 
 sectionTitle(p3, "GENERAL")
-toggle(p3, "ESP включен", false, function(v)
-	state.espEnabled = v
-	espRemote:FireServer("toggle", v)
-end)
+toggle(p3, "ESP включен", false, function(v) state.espEnabled = v end)
 toggle(p3, "Игнорировать союзников", true, function(v) state.esp.showTeamCheck = v end)
 toggle(p3, "Показывать себя", false, function(v) state.esp.showSelf = v end)
 slider(p3, "Макс. дистанция", 50, 2000, 300, "", function(v) state.esp.maxDistance = v end)
@@ -776,15 +761,13 @@ toggle(p3, "Затухание с дистанцией", true, function(v) state
 toggle(p3, "Цвет команды", true, function(v) state.esp.teamColor = v end)
 p3.CanvasSize = UDim2.new(0, 0, 0, cursor[p3] + 20)
 
--- ═══════════════════════════════════════════════
--- 📄 SETTINGS
--- ═══════════════════════════════════════════════
+-- ═══ SETTINGS ═══
 local p4 = makePage("Settings"); setCur(p4)
 
 sectionTitle(p4, "INFO")
 local infoFrame = new("Frame", {
-	Size = UDim2.new(1, -24, 0, 140),
-	Position = UDim2.new(0, 12, 0, getY(p4, 144) + 4),
+	Size = UDim2.new(1, -24, 0, 170),
+	Position = UDim2.new(0, 12, 0, getY(p4, 174) + 4),
 	BackgroundColor3 = T.panel,
 	BorderSizePixel = 0,
 }, p4)
@@ -794,7 +777,7 @@ new("TextLabel", {
 	Size = UDim2.new(1, -20, 1, -20),
 	Position = UDim2.new(0, 10, 0, 10),
 	BackgroundTransparency = 1,
-	Text = "HOTKEYS\n\n  F  →  Fly\n  G  →  AutoClick\n  V  →  Kill Aura\n  N  →  Noclip\n  E  →  ESP\n  H  →  Hide panel",
+	Text = "HOTKEYS\n\n  F  →  Fly\n  G  →  AutoClick\n  V  →  Kill Aura\n  N  →  Noclip\n  E  →  ESP\n  H  →  Hide panel\n\n  Tap ◆ to open/close",
 	TextColor3 = T.textDim,
 	Font = Enum.Font.Code,
 	TextSize = 12,
@@ -803,9 +786,7 @@ new("TextLabel", {
 }, infoFrame)
 p4.CanvasSize = UDim2.new(0, 0, 0, cursor[p4] + 20)
 
--- ═══════════════════════════════════════════════
--- 🎫 TABS INIT
--- ═══════════════════════════════════════════════
+-- ═══ TABS INIT ═══
 makeTabButton("Combat",   "⚔  Combat",   10).MouseButton1Click:Connect(function() switchTab("Combat") end)
 makeTabButton("Movement", "✈  Movement", 46).MouseButton1Click:Connect(function() switchTab("Movement") end)
 makeTabButton("ESP",      "◉  ESP",      82).MouseButton1Click:Connect(function() switchTab("ESP") end)
@@ -813,11 +794,8 @@ makeTabButton("Settings", "⚙  Settings", 118).MouseButton1Click:Connect(functi
 
 switchTab("Combat")
 
--- ═══════════════════════════════════════════════
--- ✈️ FLY (оптимизировано)
--- ═══════════════════════════════════════════════
-local flyBody, flyGyro
-local flyHRP
+-- ═══ FLY ═══
+local flyBody, flyGyro, flyHRP
 
 function setupFly(char)
 	local hrp = char:WaitForChild("HumanoidRootPart", 5)
@@ -825,8 +803,8 @@ function setupFly(char)
 	flyHRP = hrp
 	if flyBody then flyBody:Destroy() end
 	if flyGyro then flyGyro:Destroy() end
-	flyBody = new("BodyGyro", { MaxTorque = Vector3.new(9e9,9e9,9e9), P = ly1000, Parent = hrGyp })
-	fro = new("BodyVelocity", { MaxForce = Vector3.new(9e9,9e9,9e9), Velocity = Vector3.zero, Parent = hrp })
+	flyBody = new("BodyGyro", { MaxTorque = Vector3.new(9e9,9e9,9e9), P = 1000, Parent = hrp })
+	flyGyro = new("BodyVelocity", { MaxForce = Vector3.new(9e9,9e9,9e9), Velocity = Vector3.zero, Parent = hrp })
 end
 
 function stopFly()
@@ -836,117 +814,139 @@ function stopFly()
 	state.flyEnabled = false
 end
 
--- Оптимизация: обновление полёта через RenderStepped с проверкой изменений
-local lastCamCF
 RunService.RenderStepped:Connect(function()
 	if not state.flyEnabled or not flyHRP or not flyHRP.Parent then return end
 
-	-- Проверяем ввод только раз в кадр
-	local cam = camera.CFrame
+	local camCF = cam.CFrame
 	local dir = Vector3.zero
 
-	-- Векторизованные проверки (быстрее чем 6 отдельных if)
-	local k = UserInputService
-	if k:IsKeyDown(Enum.KeyCode.W) then dir += cam.LookVector end
-	if k:IsKeyDown(Enum.KeyCode.S) then dir -= cam.LookVector end
-	if k:IsKeyDown(Enum.KeyCode.A) then dir -= cam.RightVector end
-	if k:IsKeyDown(Enum.KeyCode.D) then dir += cam.RightVector end
-	if k:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0,1,0) end
-	if k:IsKeyDown(Enum.KeyCode.LeftShift) then dir -= Vector3.new(0,1,0) end
+	if UIS:IsKeyDown(Enum.KeyCode.W) then dir = dir + camCF.LookVector end
+	if UIS:IsKeyDown(Enum.KeyCode.S) then dir = dir - camCF.LookVector end
+	if UIS:IsKeyDown(Enum.KeyCode.A) then dir = dir - camCF.RightVector end
+	if UIS:IsKeyDown(Enum.KeyCode.D) then dir = dir + camCF.RightVector end
+	if UIS:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
+	if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then dir = dir - Vector3.new(0,1,0) end
 
-	-- Применяем только если есть движение или камера изменилась
 	if dir.Magnitude > 0 then
 		dir = dir.Unit * state.flySpeed
 	end
+
 	flyGyro.Velocity = dir
-	flyBody.CFrame = cam
+	flyBody.CFrame = camCF
 	flyHRP.Velocity = Vector3.zero
 end)
 
--- ═══════════════════════════════════════════════
--- ⚔️ AUTOCLICK (оптимизирован — без task.spawn loop)
--- ═══════════════════════════════════════════════
+-- ═══ AUTOCLICK (локальный — tool:Activate) ═══
 local lastClick = 0
-RunService.Heartbeat:Connect(function(dt)
+RunService.Heartbeat:Connect(function()
 	if not state.autoClick then return end
 	local now = tick()
 	if now - lastClick < state.clickCooldown then return end
 	lastClick = now
 
-	local c = player.Character
+	local c = plr.Character
 	if not c then return end
 	local tool = c:FindFirstChildOfClass("Tool")
-	if tool then tool:Activate() end
-	clickRemote:FireServer("click", {range=15, damage=10})
+	if tool then
+		pcall(function() tool:Activate() end)
+	end
 end)
 
--- ═══════════════════════════════════════════════
--- 👻 NOCLIP (оптимизирован — кэш частей)
--- ═══════════════════════════════════════════════
-local noclipParts = {}
-local noclipConnections = {}
+-- ═══ KILL AURA (локальная — визуал + tool activate) ═══
+local lastAura = 0
+RunService.Heartbeat:Connect(function()
+	if not state.killAura then return end
+	local now = tick()
+	if now - lastAura < state.auraCooldown then return end
+	lastAura = now
 
-local function setupNoclipCache(char)
-	-- Отключаем старые соединения
-	for _, c in ipairs(noclipConnections) do c:Disconnect() end
-	table.clear(noclipConnections)
-	table.clear(noclipParts)
+	local c = plr.Character
+	if not c then return end
+	local hrp = c:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
 
-	-- Кэшируем все BasePart персонажа
-	for _, p in ipairs(char:GetDescendants()) do
-		if p:IsA("BasePart") then
-			noclipParts[#noclipParts + 1] = p
+	local tool = c:FindFirstChildOfClass("Tool")
+	if tool then pcall(function() tool:Activate() end) end
+
+	-- Визуальный эффект удара по врагам в радиусе
+	for _, other in ipairs(Players:GetPlayers()) do
+		if other ~= plr and other.Character then
+			local oHrp = other.Character:FindFirstChild("HumanoidRootPart")
+			local oHum = other.Character:FindFirstChildOfClass("Humanoid")
+			if oHrp and oHum and oHum.Health > 0 then
+				if (hrp.Position - oHrp.Position).Magnitude <= state.auraRange then
+					-- Пытаемся нанести урон через tool (если есть)
+					local oTool = tool
+					if oTool and oTool:FindFirstChild("Handle") then
+						pcall(function()
+							firetouchinterest(oTool.Handle, oHrp, 0)
+							firetouchinterest(oTool.Handle, oHrp, 1)
+						end)
+					end
+					-- Визуальный эффект
+					local exp = Instance.new("Explosion")
+					exp.BlastRadius = 0
+					exp.BlastPressure = 0
+					exp.Position = oHrp.Position
+					exp.Parent = workspace
+					game:GetService("Debris"):AddItem(exp, 0.1)
+				end
+			end
 		end
 	end
+end)
 
-	-- Следим за новыми частями (для аксессуаров)
+-- ═══ NOCLIP ═══
+local noclipParts = {}
+local noclipConns = {}
+
+local function setupNoclipCache(char)
+	for _, c in ipairs(noclipConns) do c:Disconnect() end
+	table.clear(noclipConns)
+	table.clear(noclipParts)
+
+	for _, p in ipairs(char:GetDescendants()) do
+		if p:IsA("BasePart") then noclipParts[#noclipParts + 1] = p end
+	end
+
 	local conn = char.DescendantAdded:Connect(function(p)
 		if p:IsA("BasePart") and state.noclip then
 			p.CanCollide = false
 		end
 	end)
-	noclipConnections[#noclipConnections + 1] = conn
+	noclipConns[#noclipConns + 1] = conn
 end
 
-local function applyNoclip()
+RunService.Stepped:Connect(function()
 	if not state.noclip then return end
 	for i = 1, #noclipParts do
 		local p = noclipParts[i]
-		if p.Parent and p.CanCollide then
-			p.CanCollide = false
-		end
+		if p.Parent and p.CanCollide then p.CanCollide = false end
 	end
-end
+end)
 
--- Обновляем через Stepped, но только когда включен
-RunService.Stepped:Connect(applyNoclip)
+local function onChar(char) setupNoclipCache(char) end
+if plr.Character then onChar(plr.Character) end
+plr.CharacterAdded:Connect(onChar)
 
--- Обновляем кэш при респавне
-local function onChar(char)
-	setupNoclipCache(char)
-end
-
-if player.Character then onChar(player.Character) end
-player.CharacterAdded:Connect(onChar)
-
--- ═══════════════════════════════════════════════
--- 🎯 ESP (оптимизировано)
--- ═══════════════════════════════════════════════
+-- ═══ ESP (через Drawing API — работает в экзекуторах) ═══
 local espData = {}
 local espUpdateAccum = 0
-local ESP_UPDATE_RATE = 0.05 -- 20 FPS для ESP = плавно и без лагов
+local ESP_UPDATE_RATE = 0.05
+
+-- Проверка наличия Drawing
+local hasDrawing = pcall(function() local _ = Drawing.new("Square") end)
+if not hasDrawing then
+	warn("[NEXUS] Drawing API недоступен. ESP не будет работать.")
+end
 
 local function cleanup(plr)
 	local d = espData[plr]
 	if not d then return end
 	for _, o in pairs(d) do
 		if type(o) == "table" then
-			for _, s in pairs(o) do
-				if s and s.Remove then s:Remove() end
-			end
-		elseif o and o.Remove then
-			o:Remove()
-		end
+			for _, s in pairs(o) do if s and s.Remove then pcall(function() s:Remove() end) end end
+		elseif o and o.Remove then pcall(function() o:Remove() end) end
 	end
 	espData[plr] = nil
 end
@@ -959,6 +959,7 @@ end
 
 local function createESP(plr)
 	if espData[plr] then return end
+	if not hasDrawing then return end
 	espData[plr] = {
 		box = mkDraw("Square", {Visible=false, Thickness=1.5, Color=Color3.new(1,1,1), Filled=false, Transparency=1}),
 		boxFill = mkDraw("Square", {Visible=false, Thickness=1, Color=Color3.new(1,1,1), Filled=true, Transparency=0.85}),
@@ -988,95 +989,74 @@ local function hideAll(data)
 end
 
 local function updateESP()
-	local myTeam = player.Team
-	local camPos = camera.CFrame.Position
-	local vpSize = camera.ViewportSize
+	local myTeam = plr.Team
+	local camPos = cam.CFrame.Position
+	local vpSize = cam.ViewportSize
 	local vpCenterX = vpSize.X / 2
 	local esp = state.esp
 
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr == player and not esp.showSelf then
-			if espData[plr] then hideAll(espData[plr]) end
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p == plr and not esp.showSelf then
+			if espData[p] then hideAll(espData[p]) end
 			continue
 		end
 
-		local d = espData[plr]
-		if not d then
-			createESP(plr)
-			d = espData[plr]
-		end
+		local d = espData[p]
+		if not d then createESP(p); d = espData[p] end
+		if not d then continue end
 
-		local c = plr.Character
-		local hrp = c and c.HumanoidRootPart -- прямое обращение быстрее
-		local head = c and c.Head
-		local hum = c and c.Humanoid
+		local c = p.Character
+		local hrp = c and c:FindFirstChild("HumanoidRootPart")
+		local head = c and c:FindFirstChild("Head")
+		local hum = c and c:FindFirstChildOfClass("Humanoid")
 
-		-- Ранний выход: мёртв / нет частей
 		if not (hrp and head and hum and hum.Health > 0) then
-			hideAll(d)
-			continue
+			hideAll(d); continue
 		end
 
-		-- Team check
-		if esp.showTeamCheck and myTeam and plr.Team == myTeam then
-			hideAll(d)
-			continue
+		if esp.showTeamCheck and myTeam and p.Team == myTeam then
+			hideAll(d); continue
 		end
 
-		-- Дистанция (до WorldToViewportPoint — экономим вычисления)
 		local hrpPos = hrp.Position
 		local dx = camPos.X - hrpPos.X
 		local dy = camPos.Y - hrpPos.Y
 		local dz = camPos.Z - hrpPos.Z
 		local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
 
-		if dist > esp.maxDistance then
-			hideAll(d)
-			continue
-		end
+		if dist > esp.maxDistance then hideAll(d); continue end
 
-		-- Проекция на экран
-		local hPos, hOn = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
-		local rPos, rOn = camera:WorldToViewportPoint(hrpPos)
+		local hPos, hOn = cam:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+		local rPos, rOn = cam:WorldToViewportPoint(hrpPos)
 
-		if not hOn and not rOn then
-			hideAll(d)
-			continue
-		end
+		if not hOn and not rOn then hideAll(d); continue end
 
 		local boxH = math.abs(hPos.Y - rPos.Y) * 1.6
 		local boxW = boxH * 0.55
 		local boxX = hPos.X - boxW * 0.5
 		local boxY = hPos.Y - boxH * 0.5 + boxH * 0.1
-		local boxPos = Vector2.new(boxX, boxY)
 
-		-- Alpha
 		local alpha = 1
 		if esp.fadeWithDistance then
 			alpha = 1 - (dist / esp.maxDistance) * 0.7
 			if alpha < 0.3 then alpha = 0.3 end
 		end
 
-		-- Цвет
 		local boxCol = esp.boxColor
-		if esp.teamColor and plr.Team then
-			boxCol = plr.Team.TeamColor.Color
-		end
+		if esp.teamColor and p.Team then boxCol = p.Team.TeamColor.Color end
 
-		-- Box
 		if esp.boxEnabled and esp.boxStyle == "Коробка" then
-			local box = d.box
-			box.Visible = true
-			box.Size = Vector2.new(boxW, boxH)
-			box.Position = boxPos
-			box.Color = boxCol
-			box.Thickness = esp.boxThickness
-			box.Transparency = alpha
+			d.box.Visible = true
+			d.box.Size = Vector2.new(boxW, boxH)
+			d.box.Position = Vector2.new(boxX, boxY)
+			d.box.Color = boxCol
+			d.box.Thickness = esp.boxThickness
+			d.box.Transparency = alpha
 
 			if esp.fillBox then
 				d.boxFill.Visible = true
 				d.boxFill.Size = Vector2.new(boxW, boxH)
-				d.boxFill.Position = boxPos
+				d.boxFill.Position = Vector2.new(boxX, boxY)
 				d.boxFill.Color = boxCol
 				d.boxFill.Transparency = esp.fillTransparency
 			else
@@ -1089,13 +1069,11 @@ local function updateESP()
 			d.boxFill.Visible = false
 		end
 
-		-- Уголки
 		if esp.boxEnabled and esp.boxStyle == "Уголки" then
 			local cl = math.min(boxW, boxH) * 0.25
 			local x1, y1 = boxX, boxY
 			local x2, y2 = boxX + boxW, boxY + boxH
 			local L = d.corners
-			local t = esp.boxThickness
 
 			L[1].From, L[1].To = Vector2.new(x1, y1), Vector2.new(x1 + cl, y1)
 			L[2].From, L[2].To = Vector2.new(x1, y1), Vector2.new(x1, y1 + cl)
@@ -1110,7 +1088,7 @@ local function updateESP()
 				local l = L[i]
 				l.Visible = true
 				l.Color = boxCol
-				l.Thickness = t
+				l.Thickness = esp.boxThickness
 				l.Transparency = alpha
 			end
 			d.box.Visible = false
@@ -1118,42 +1096,36 @@ local function updateESP()
 			for i = 1, 8 do d.corners[i].Visible = false end
 		end
 
-		-- Name
 		if esp.nameEnabled then
-			local n = d.name
-			n.Visible = true
-			n.Text = plr.Name
-			n.Position = Vector2.new(boxX + boxW * 0.5, boxY - 18)
-			n.Size = esp.textSize
-			n.Color = esp.nameColor
-			n.Transparency = alpha
+			d.name.Visible = true
+			d.name.Text = p.Name
+			d.name.Position = Vector2.new(boxX + boxW * 0.5, boxY - 18)
+			d.name.Size = esp.textSize
+			d.name.Color = esp.nameColor
+			d.name.Transparency = alpha
 		else
 			d.name.Visible = false
 		end
 
-		-- Distance
 		if esp.distanceEnabled then
-			local dd = d.distance
-			dd.Visible = true
-			dd.Text = "[" .. math.floor(dist) .. "]"
-			dd.Position = Vector2.new(boxX + boxW * 0.5, boxY + boxH + 4)
-			dd.Size = esp.textSize - 1
-			dd.Color = esp.distanceColor
-			dd.Transparency = alpha
+			d.distance.Visible = true
+			d.distance.Text = "[" .. math.floor(dist) .. "]"
+			d.distance.Position = Vector2.new(boxX + boxW * 0.5, boxY + boxH + 4)
+			d.distance.Size = esp.textSize - 1
+			d.distance.Color = esp.distanceColor
+			d.distance.Transparency = alpha
 		else
 			d.distance.Visible = false
 		end
 
-		-- Health
 		if esp.healthEnabled then
 			local hp = hum.Health / hum.MaxHealth
 			local bw, bh = 3, boxH
 			local bx, by
 
-			local side = esp.healthBarSide
-			if side == "Слева" then
+			if esp.healthBarSide == "Слева" then
 				bx, by = boxX - 8, boxY
-			elseif side == "Справа" then
+			elseif esp.healthBarSide == "Справа" then
 				bx, by = boxX + boxW + 5, boxY
 			else
 				bw, bh = boxW, 3
@@ -1165,46 +1137,41 @@ local function updateESP()
 			d.healthBarBg.Position = Vector2.new(bx, by)
 			d.healthBarBg.Transparency = alpha * 0.5
 
-			local hb = d.healthBar
-			hb.Visible = true
-			if side == "Под именем" then
-				hb.Size = Vector2.new(bw * hp, bh)
-				hb.Position = Vector2.new(bx, by)
+			d.healthBar.Visible = true
+			if esp.healthBarSide == "Под именем" then
+				d.healthBar.Size = Vector2.new(bw * hp, bh)
+				d.healthBar.Position = Vector2.new(bx, by)
 			else
-				hb.Size = Vector2.new(bw, bh * hp)
-				hb.Position = Vector2.new(bx, by + bh * (1 - hp))
+				d.healthBar.Size = Vector2.new(bw, bh * hp)
+				d.healthBar.Position = Vector2.new(bx, by + bh * (1 - hp))
 			end
-			hb.Color = esp.healthColor
-			hb.Transparency = alpha
+			d.healthBar.Color = esp.healthColor
+			d.healthBar.Transparency = alpha
 		else
 			d.healthBar.Visible = false
 			d.healthBarBg.Visible = false
 		end
 
-		-- Tracer
 		if esp.tracerEnabled then
-			local t = d.tracer
-			t.Visible = true
+			d.tracer.Visible = true
 			if esp.tracerFromBottom then
-				t.From = Vector2.new(vpCenterX, vpSize.Y)
+				d.tracer.From = Vector2.new(vpCenterX, vpSize.Y)
 			else
-				t.From = Vector2.new(vpCenterX, 0)
+				d.tracer.From = Vector2.new(vpCenterX, 0)
 			end
-			t.To = Vector2.new(boxX + boxW * 0.5, boxY + boxH)
-			t.Color = esp.tracerColor
-			t.Transparency = alpha
+			d.tracer.To = Vector2.new(boxX + boxW * 0.5, boxY + boxH)
+			d.tracer.Color = esp.tracerColor
+			d.tracer.Transparency = alpha
 		else
 			d.tracer.Visible = false
 		end
 
-		-- HeadDot
 		if esp.headDotEnabled then
-			local hd = d.headDot
-			hd.Visible = true
-			hd.Position = Vector2.new(hPos.X, hPos.Y)
-			hd.Radius = 4
-			hd.Color = esp.headDotColor
-			hd.Transparency = alpha
+			d.headDot.Visible = true
+			d.headDot.Position = Vector2.new(hPos.X, hPos.Y)
+			d.headDot.Radius = 4
+			d.headDot.Color = esp.headDotColor
+			d.headDot.Transparency = alpha
 		else
 			d.headDot.Visible = false
 		end
@@ -1213,21 +1180,16 @@ end
 
 Players.PlayerRemoving:Connect(cleanup)
 
--- Оптимизированный цикл ESP через аккумулятор времени
 RunService.Heartbeat:Connect(function(dt)
 	if not state.espEnabled then return end
 	espUpdateAccum = espUpdateAccum + dt
 	if espUpdateAccum < ESP_UPDATE_RATE then return end
 	espUpdateAccum = 0
-	updateESP()
+	pcall(updateESP)
 end)
 
--- ═══════════════════════════════════════════════
--- 📊 STATS (оптимизировано — 1s обновление)
--- ═══════════════════════════════════════════════
--- Кэшируем StatsItems заранее
+-- ═══ STATS ═══
 local pingStat = Stats.Network.ServerStatsItem["Data Ping"]
-
 local frameCount, fpsTimer, fps = 0, 0, 60
 
 RunService.RenderStepped:Connect(function(dt)
@@ -1244,44 +1206,39 @@ task.spawn(function()
 	while true do
 		task.wait(1)
 		local ping = 0
-		local ok, p = pcall(function() return pingStat:GetValue() end)
-		if ok then ping = math.floor(p) end
+		pcall(function() ping = math.floor(pingStat:GetValue()) end)
 
 		local pingIcon = ping <= 60 and "🟢" or (ping <= 150 and "🟡" or "🔴")
 		headerStats.Text = string.format("%s %d ms  |  %d fps", pingIcon, ping, fps)
 
-		-- Mem обновляем реже (раз в 2 секунды)
 		local mem = math.floor(Stats:GetTotalMemoryUsageMb())
 		memoryText.Text = "mem " .. mem .. " MB"
 		memoryText.TextColor3 = mem <= 800 and T.green or (mem <= 1500 and T.yellow or T.red)
 	end
 end)
 
--- ═══════════════════════════════════════════════
--- ⌨️ HOTKEYS
--- ═══════════════════════════════════════════════
-UserInputService.InputBegan:Connect(function(input, gpe)
+-- ═══ HOTKEYS ═══
+UIS.InputBegan:Connect(function(input, gpe)
 	if gpe then return end
 	local k = input.KeyCode
 
 	if k == Enum.KeyCode.F then
 		state.flyEnabled = not state.flyEnabled
 		if state.flyEnabled then
-			local c = player.Character
+			local c = plr.Character
 			if c then setupFly(c) end
-		else stopFly() end
-		flyRemote:FireServer("toggle")
+		else
+			stopFly()
+		end
 	elseif k == Enum.KeyCode.G then
 		state.autoClick = not state.autoClick
 		autoClickTgl.set(state.autoClick)
 	elseif k == Enum.KeyCode.V then
-		auraRemote:FireServer("toggle")
+		state.killAura = not state.killAura
 	elseif k == Enum.KeyCode.N then
 		state.noclip = not state.noclip
-		noclipRemote:FireServer("toggle")
 	elseif k == Enum.KeyCode.E then
 		state.espEnabled = not state.espEnabled
-		espRemote:FireServer("toggle", state.espEnabled)
 	elseif k == Enum.KeyCode.H then
 		if win.Visible then
 			tw(win, { Position = UDim2.new(0, 40, 0.5, 800) })
@@ -1295,9 +1252,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 	end
 end)
 
--- ═══════════════════════════════════════════════
--- ❌ CLOSE
--- ═══════════════════════════════════════════════
+-- ═══ CLOSE ═══
 closeBtn.MouseButton1Click:Connect(function()
 	tw(win, { Position = UDim2.new(0, 40, 0.5, 800) })
 	task.wait(0.15)
@@ -1306,12 +1261,10 @@ end)
 closeBtn.MouseEnter:Connect(function() tw(closeBtn, { TextColor3 = T.red }) end)
 closeBtn.MouseLeave:Connect(function() tw(closeBtn, { TextColor3 = T.textDim }) end)
 
--- ═══════════════════════════════════════════════
--- 🔄 RESPAWN
--- ═══════════════════════════════════════════════
-player.CharacterAdded:Connect(function()
+-- ═══ RESPAWN ═══
+plr.CharacterAdded:Connect(function()
 	state.flyEnabled = false
 	stopFly()
 end)
 
-print("⚡ NEXUS v1.0 загружен | F/G/V/N/E/H")
+print("⚡ NEXUS v1.0 (Universal) загружен | F/G/V/N/E/H")

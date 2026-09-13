@@ -1,7 +1,6 @@
 --[[
     NEXUS v1.0 — Universal Edition
-    Works in any Roblox game via executor
-    Features: FastClick • Kill Aura • Fly • Noclip • ESP
+    Works in any Roblox game via executor (Delta, Arceus, Synapse, Codex)
 ]]--
 
 -- ═══ SERVICES ═══
@@ -10,6 +9,7 @@ local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Stats = game:GetService("Stats")
+local Debris = game:GetService("Debris")
 
 local plr = Players.LocalPlayer
 local cam = workspace.CurrentCamera
@@ -36,7 +36,7 @@ local T = {
 local state = {
 	flyEnabled = false, flySpeed = 100,
 	clickCooldown = 0.1, autoClick = false,
-	killAura = false, auraRange = 20, auraDamage = 15, auraCooldown = 0.15,
+	killAura = false, auraRange = 20, auraCooldown = 0.15,
 	noclip = false,
 	espEnabled = false,
 	esp = {
@@ -84,7 +84,6 @@ local function stroke(inst, col, th, trans)
 	return s
 end
 
--- Защита GUI от обнаружения (для экзекуторов)
 local function protectGui(g)
 	pcall(function()
 		if gethui then
@@ -92,20 +91,18 @@ local function protectGui(g)
 		elseif syn and syn.protect_gui then
 			syn.protect_gui(g)
 			g.Parent = game:GetService("CoreGui")
-		elseif protect_gui then
-			protect_gui(g)
 		else
 			g.Parent = game:GetService("CoreGui")
 		end
 	end)
 end
 
--- ═══ GUI ROOT ═══
-local old = game:GetService("CoreGui"):FindFirstChild("NexusPanel")
-if old then old:Destroy() end
+-- ═══ GUI ═══
 pcall(function()
-	local old2 = plr.PlayerGui:FindFirstChild("NexusPanel")
-	if old2 then old2:Destroy() end
+	local o1 = game:GetService("CoreGui"):FindFirstChild("NexusPanel")
+	if o1 then o1:Destroy() end
+	local o2 = plr.PlayerGui:FindFirstChild("NexusPanel")
+	if o2 then o2:Destroy() end
 end)
 
 local gui = new("ScreenGui", {
@@ -274,7 +271,6 @@ local memoryText = new("TextLabel", {
 -- ═══ TABS ═══
 local pages = {}
 local tabs = {}
-local activePage = nil
 
 local function makeTabButton(id, label, y)
 	local btn = new("TextButton", {
@@ -309,7 +305,6 @@ local function makeTabButton(id, label, y)
 end
 
 local function switchTab(id)
-	activePage = id
 	for tid, t in pairs(tabs) do
 		if tid == id then
 			tw(t.indicator, { Size = UDim2.new(0, 2, 0, 18) })
@@ -324,7 +319,6 @@ local function switchTab(id)
 	end
 end
 
--- ═══ PAGES ═══
 local function makePage(id)
 	local page = new("ScrollingFrame", {
 		Name = id,
@@ -335,6 +329,7 @@ local function makePage(id)
 		ScrollBarImageColor3 = T.line,
 		CanvasSize = UDim2.new(0, 0, 0, 500),
 		Visible = false,
+		Elasticity = 0.3,
 	}, content)
 	pages[id] = page
 	return page
@@ -565,7 +560,6 @@ local function dropdown(page, label, options, def, cb)
 	stroke(curBtn, T.line, 1)
 
 	local listFrame, isOpen = nil, false
-
 	local function close()
 		if listFrame then listFrame:Destroy(); listFrame = nil end
 		isOpen = false
@@ -696,10 +690,9 @@ sectionTitle(p1, "FAST CLICK")
 local autoClickTgl = toggle(p1, "Автоклик", false, function(v) state.autoClick = v end)
 slider(p1, "Задержка клика", 0.01, 1.0, 0.1, "s", function(v) state.clickCooldown = v end)
 
-sectionTitle(p1, "KILL AURA (клиентская)")
+sectionTitle(p1, "KILL AURA")
 toggle(p1, "Включить Kill Aura", false, function(v) state.killAura = v end)
 slider(p1, "Радиус", 5, 100, 20, "", function(v) state.auraRange = v end)
-slider(p1, "Урон (визуал/локально)", 1, 200, 15, "", function(v) state.auraDamage = v end)
 slider(p1, "Скорость удара", 0.05, 1.0, 0.15, "s", function(v) state.auraCooldown = v end)
 p1.CanvasSize = UDim2.new(0, 0, 0, cursor[p1] + 20)
 
@@ -777,7 +770,7 @@ new("TextLabel", {
 	Size = UDim2.new(1, -20, 1, -20),
 	Position = UDim2.new(0, 10, 0, 10),
 	BackgroundTransparency = 1,
-	Text = "HOTKEYS\n\n  F  →  Fly\n  G  →  AutoClick\n  V  →  Kill Aura\n  N  →  Noclip\n  E  →  ESP\n  H  →  Hide panel\n\n  Tap ◆ to open/close",
+	Text = "HOTKEYS\n\n  F  →  Fly\n  G  →  AutoClick\n  V  →  Kill Aura\n  N  →  Noclip\n  E  →  ESP\n  H  →  Hide panel",
 	TextColor3 = T.textDim,
 	Font = Enum.Font.Code,
 	TextSize = 12,
@@ -836,7 +829,7 @@ RunService.RenderStepped:Connect(function()
 	flyHRP.Velocity = Vector3.zero
 end)
 
--- ═══ AUTOCLICK (локальный — tool:Activate) ═══
+-- ═══ AUTOCLICK ═══
 local lastClick = 0
 RunService.Heartbeat:Connect(function()
 	if not state.autoClick then return end
@@ -847,12 +840,10 @@ RunService.Heartbeat:Connect(function()
 	local c = plr.Character
 	if not c then return end
 	local tool = c:FindFirstChildOfClass("Tool")
-	if tool then
-		pcall(function() tool:Activate() end)
-	end
+	if tool then pcall(function() tool:Activate() end) end
 end)
 
--- ═══ KILL AURA (локальная — визуал + tool activate) ═══
+-- ═══ KILL AURA ═══
 local lastAura = 0
 RunService.Heartbeat:Connect(function()
 	if not state.killAura then return end
@@ -868,28 +859,20 @@ RunService.Heartbeat:Connect(function()
 	local tool = c:FindFirstChildOfClass("Tool")
 	if tool then pcall(function() tool:Activate() end) end
 
-	-- Визуальный эффект удара по врагам в радиусе
 	for _, other in ipairs(Players:GetPlayers()) do
 		if other ~= plr and other.Character then
 			local oHrp = other.Character:FindFirstChild("HumanoidRootPart")
 			local oHum = other.Character:FindFirstChildOfClass("Humanoid")
 			if oHrp and oHum and oHum.Health > 0 then
 				if (hrp.Position - oHrp.Position).Magnitude <= state.auraRange then
-					-- Пытаемся нанести урон через tool (если есть)
-					local oTool = tool
-					if oTool and oTool:FindFirstChild("Handle") then
-						pcall(function()
-							firetouchinterest(oTool.Handle, oHrp, 0)
-							firetouchinterest(oTool.Handle, oHrp, 1)
-						end)
-					end
-					-- Визуальный эффект
-					local exp = Instance.new("Explosion")
-					exp.BlastRadius = 0
-					exp.BlastPressure = 0
-					exp.Position = oHrp.Position
-					exp.Parent = workspace
-					game:GetService("Debris"):AddItem(exp, 0.1)
+					pcall(function()
+						local exp = Instance.new("Explosion")
+						exp.BlastRadius = 0
+						exp.BlastPressure = 0
+						exp.Position = oHrp.Position
+						exp.Parent = workspace
+						Debris:AddItem(exp, 0.1)
+					end)
 				end
 			end
 		end
@@ -910,9 +893,7 @@ local function setupNoclipCache(char)
 	end
 
 	local conn = char.DescendantAdded:Connect(function(p)
-		if p:IsA("BasePart") and state.noclip then
-			p.CanCollide = false
-		end
+		if p:IsA("BasePart") and state.noclip then p.CanCollide = false end
 	end)
 	noclipConns[#noclipConns + 1] = conn
 end
@@ -929,26 +910,22 @@ local function onChar(char) setupNoclipCache(char) end
 if plr.Character then onChar(plr.Character) end
 plr.CharacterAdded:Connect(onChar)
 
--- ═══ ESP (через Drawing API — работает в экзекуторах) ═══
+-- ═══ ESP (Drawing API) ═══
 local espData = {}
 local espUpdateAccum = 0
 local ESP_UPDATE_RATE = 0.05
 
--- Проверка наличия Drawing
 local hasDrawing = pcall(function() local _ = Drawing.new("Square") end)
-if not hasDrawing then
-	warn("[NEXUS] Drawing API недоступен. ESP не будет работать.")
-end
 
-local function cleanup(plr)
-	local d = espData[plr]
+local function cleanup(p)
+	local d = espData[p]
 	if not d then return end
 	for _, o in pairs(d) do
 		if type(o) == "table" then
 			for _, s in pairs(o) do if s and s.Remove then pcall(function() s:Remove() end) end end
 		elseif o and o.Remove then pcall(function() o:Remove() end) end
 	end
-	espData[plr] = nil
+	espData[p] = nil
 end
 
 local function mkDraw(cls, props)
@@ -957,10 +934,9 @@ local function mkDraw(cls, props)
 	return d
 end
 
-local function createESP(plr)
-	if espData[plr] then return end
-	if not hasDrawing then return end
-	espData[plr] = {
+local function createESP(p)
+	if espData[p] or not hasDrawing then return end
+	espData[p] = {
 		box = mkDraw("Square", {Visible=false, Thickness=1.5, Color=Color3.new(1,1,1), Filled=false, Transparency=1}),
 		boxFill = mkDraw("Square", {Visible=false, Thickness=1, Color=Color3.new(1,1,1), Filled=true, Transparency=0.85}),
 		corners = {
@@ -1013,22 +989,17 @@ local function updateESP()
 		if not (hrp and head and hum and hum.Health > 0) then
 			hideAll(d); continue
 		end
-
 		if esp.showTeamCheck and myTeam and p.Team == myTeam then
 			hideAll(d); continue
 		end
 
 		local hrpPos = hrp.Position
-		local dx = camPos.X - hrpPos.X
-		local dy = camPos.Y - hrpPos.Y
-		local dz = camPos.Z - hrpPos.Z
+		local dx, dy, dz = camPos.X - hrpPos.X, camPos.Y - hrpPos.Y, camPos.Z - hrpPos.Z
 		local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
-
 		if dist > esp.maxDistance then hideAll(d); continue end
 
 		local hPos, hOn = cam:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
 		local rPos, rOn = cam:WorldToViewportPoint(hrpPos)
-
 		if not hOn and not rOn then hideAll(d); continue end
 
 		local boxH = math.abs(hPos.Y - rPos.Y) * 1.6
@@ -1052,7 +1023,6 @@ local function updateESP()
 			d.box.Color = boxCol
 			d.box.Thickness = esp.boxThickness
 			d.box.Transparency = alpha
-
 			if esp.fillBox then
 				d.boxFill.Visible = true
 				d.boxFill.Size = Vector2.new(boxW, boxH)
@@ -1062,7 +1032,6 @@ local function updateESP()
 			else
 				d.boxFill.Visible = false
 			end
-
 			for i = 1, 8 do d.corners[i].Visible = false end
 		else
 			d.box.Visible = false
@@ -1071,10 +1040,8 @@ local function updateESP()
 
 		if esp.boxEnabled and esp.boxStyle == "Уголки" then
 			local cl = math.min(boxW, boxH) * 0.25
-			local x1, y1 = boxX, boxY
-			local x2, y2 = boxX + boxW, boxY + boxH
+			local x1, y1, x2, y2 = boxX, boxY, boxX + boxW, boxY + boxH
 			local L = d.corners
-
 			L[1].From, L[1].To = Vector2.new(x1, y1), Vector2.new(x1 + cl, y1)
 			L[2].From, L[2].To = Vector2.new(x1, y1), Vector2.new(x1, y1 + cl)
 			L[3].From, L[3].To = Vector2.new(x2, y1), Vector2.new(x2 - cl, y1)
@@ -1083,13 +1050,9 @@ local function updateESP()
 			L[6].From, L[6].To = Vector2.new(x1, y2), Vector2.new(x1, y2 - cl)
 			L[7].From, L[7].To = Vector2.new(x2, y2), Vector2.new(x2 - cl, y2)
 			L[8].From, L[8].To = Vector2.new(x2, y2), Vector2.new(x2, y2 - cl)
-
 			for i = 1, 8 do
 				local l = L[i]
-				l.Visible = true
-				l.Color = boxCol
-				l.Thickness = esp.boxThickness
-				l.Transparency = alpha
+				l.Visible = true; l.Color = boxCol; l.Thickness = esp.boxThickness; l.Transparency = alpha
 			end
 			d.box.Visible = false
 		elseif esp.boxStyle ~= "Уголки" then
@@ -1103,9 +1066,7 @@ local function updateESP()
 			d.name.Size = esp.textSize
 			d.name.Color = esp.nameColor
 			d.name.Transparency = alpha
-		else
-			d.name.Visible = false
-		end
+		else d.name.Visible = false end
 
 		if esp.distanceEnabled then
 			d.distance.Visible = true
@@ -1114,23 +1075,15 @@ local function updateESP()
 			d.distance.Size = esp.textSize - 1
 			d.distance.Color = esp.distanceColor
 			d.distance.Transparency = alpha
-		else
-			d.distance.Visible = false
-		end
+		else d.distance.Visible = false end
 
 		if esp.healthEnabled then
 			local hp = hum.Health / hum.MaxHealth
 			local bw, bh = 3, boxH
 			local bx, by
-
-			if esp.healthBarSide == "Слева" then
-				bx, by = boxX - 8, boxY
-			elseif esp.healthBarSide == "Справа" then
-				bx, by = boxX + boxW + 5, boxY
-			else
-				bw, bh = boxW, 3
-				bx, by = boxX, boxY - 6
-			end
+			if esp.healthBarSide == "Слева" then bx, by = boxX - 8, boxY
+			elseif esp.healthBarSide == "Справа" then bx, by = boxX + boxW + 5, boxY
+			else bw, bh = boxW, 3; bx, by = boxX, boxY - 6 end
 
 			d.healthBarBg.Visible = true
 			d.healthBarBg.Size = Vector2.new(bw, bh)
@@ -1162,9 +1115,7 @@ local function updateESP()
 			d.tracer.To = Vector2.new(boxX + boxW * 0.5, boxY + boxH)
 			d.tracer.Color = esp.tracerColor
 			d.tracer.Transparency = alpha
-		else
-			d.tracer.Visible = false
-		end
+		else d.tracer.Visible = false end
 
 		if esp.headDotEnabled then
 			d.headDot.Visible = true
@@ -1172,9 +1123,7 @@ local function updateESP()
 			d.headDot.Radius = 4
 			d.headDot.Color = esp.headDotColor
 			d.headDot.Transparency = alpha
-		else
-			d.headDot.Visible = false
-		end
+		else d.headDot.Visible = false end
 	end
 end
 
@@ -1207,7 +1156,6 @@ task.spawn(function()
 		task.wait(1)
 		local ping = 0
 		pcall(function() ping = math.floor(pingStat:GetValue()) end)
-
 		local pingIcon = ping <= 60 and "🟢" or (ping <= 150 and "🟡" or "🔴")
 		headerStats.Text = string.format("%s %d ms  |  %d fps", pingIcon, ping, fps)
 
@@ -1267,4 +1215,4 @@ plr.CharacterAdded:Connect(function()
 	stopFly()
 end)
 
-print("⚡ NEXUS v1.0 (Universal) загружен | F/G/V/N/E/H")
+print("⚡ NEXUS v1.0 (Universal) загружен")
